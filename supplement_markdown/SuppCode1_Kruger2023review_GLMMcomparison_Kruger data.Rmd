@@ -1,0 +1,1217 @@
+---
+title: "Supporting documentation: Decreasing trends of chinstrap penguin breeding colonies in a region of major and ongoing environmental change suggest population level vulnerability: a reanalysis of Krüger (2023)"
+author: "Chris Oosthuizen, Murray Christian, Azwianewi Makhado, Mzabalazo Ngwenya"
+date: "2023-10-05"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+    keep_tex: false
+    fig_width: 8
+    fig_height: 5
+editor_options: 
+  chunk_output_type: console
+---
+
+---
+header-includes:
+    - \colorlet{mycolor}{lightgray}
+    - \usepackage{tcolorbox}
+    - \renewtcolorbox{quote}{colback=mycolor}
+---
+
+# Krüger (2023) reanalysis
+
+>This script provides a reanalysis of Krüger (2023) (Citation: Krüger, L. (2023). Decreasing Trends of Chinstrap Penguin Breeding Colonies in a Region of Major and Ongoing Rapid Environmental Changes Suggest Population Level Vulnerability. Diversity, 15(3), 327.). 
+The Krüger (2023) supplementary material provided reproducible R code for that study's analyses. We use that code here to replicate the original results. In addition, we provide additional analysis that cautions that the analysis performed by Krüger (2023) cannot support robust inference. 
+
+```{r run in r , include=FALSE}
+#library(knitr)
+#knit('./markdown/Reviewing Kruger2023_GLMM comparison.Rmd')
+```
+
+## Load packages and set plotting theme
+
+```{r setup, include=TRUE, message=FALSE, warning=FALSE}
+# Load packages
+# data summary
+library(reshape2)
+library(plyr)
+library(dplyr)
+library(tidyverse)
+#plots
+library(ggplot2)
+library(patchwork)
+library(sjPlot)
+#models
+library(energy)
+library(optimx)
+library(minqa)
+library(dfoptim)
+library(MCMCglmm)
+
+library(ggforce) # not part of original script, but needed to plot site trends below
+
+# plot theme
+th <- theme(axis.text=element_text(size=12, face="bold",colour="grey30"),
+           axis.title=element_text(size=14,face="bold"),
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           title =element_text(size=12, face="bold",colour="black"))
+
+```
+
+## Load and process MAPPPD data for area 48.1:
+```{r data, include=TRUE}
+# Humphries et al. (2017) Mapping Application for Penguin Populations 
+# and Projected Dynamics (MAPPPD): data and tools for dynamic management 
+# and decision support. Polar Record 53 (269): 160–166 doi:10.1017/S0032247417000055
+
+df <- read.csv(here::here("./data/mapppd AllCounts_V_4_0.csv"))
+
+# subset chinstrap penguin
+chins<-subset(df,common_name=="chinstrap penguin") 
+
+summary(as.factor(chins$common_name))
+
+summary(as.factor(chins$count_type))
+
+# use only nest counts
+nests<-subset(chins,count_type=="nests") 
+
+# some populations had multiple counts over the same season: 
+# this summarises the count with the maximum nests
+nestM<-ddply(na.omit(data.frame(nests)), c("season_starting","site_id"), 
+             summarise,
+             nests=max(penguin_count),
+             Lat=mean(latitude_epsg_4326),
+             Lon=mean(longitude_epsg_4326)) 
+``` 
+ 
+> Here, the na.omit function removes all rows where there are NA values (missing data). Some rows have missing information for:
+- the day of the count
+- the day and month of the count
+- the accuracy of the count
+- the vantage point (ground, boat, uav, vhr)
+- on 4 occasions there are no count data (NA).
+One can argue that counts with unknown accuracy, vantage point, or count dates should be excluded from analysis, as was done here. Alternatively, one can argue that it makes little sense to exclude counts (e.g., those with high accuracy) where the only data missing is the day on the month where the count was conducted. This is because we did not subset / select counts in any other way (e.g., data was not limited to 'accurate' counts, or those happening within a certain date limit). Thus, this paper could arguably have use more of the available count data (given what was used). It is also worth discussing whether counts with poor accuracy should have been included in analysis, and if included, what the impact of counts with poor accuracy can have on the results.  
+
+
+```{r data continue, include=TRUE}
+# summarizing number of populations and number of counts
+countsN <-ddply(nestM, c("site_id","Lat","Lon"), summarise,
+                ncounts=length(nests),
+                interval=(max(season_starting)-min(season_starting)))
+head(countsN)
+
+# summarizing number of populations and number of counts with more than 0 nests
+countsN2<-ddply(subset(nestM,nests>0), c("site_id","Lat","Lon"), summarise,
+                ncounts=length(nests),
+                interval=(max(season_starting)-min(season_starting)))
+head(countsN2)
+
+summary(as.factor(countsN2$ncounts))
+
+npops=length(countsN2$ncounts[countsN2$ncounts>1])
+npops # number of populations
+
+nestM2<-merge(nestM,countsN) # number of counts for each population by merging
+
+# test for Poisson distribution (Poisson M-test)
+poisson.mtest(nestM2$nests[nestM2$ncounts>1 & nestM2$nests>0],R=199)
+
+```
+
+> Here, the poisson.mtest is conducted on all the data (nestM2$nests[nestM2$ncounts>1 & nestM2$nests>0]. Yet, a glm is run per site. Should this test not be conducted at the site level, if we are conducting site-specific analysis? Tests for a Poisson distribution at the site level is not really possible as most sites only have two counts. Regardless, we can probably just assume a Poisson distribution because counts are often Poisson distributed.  
+
+
+## Calculate the mean slope of the decrease per site (glm)
+
+```{r glm, warning=TRUE, message=TRUE}
+# subset only populations with at least 2 counts and with any nest recorded
+nestm3<-subset(nestM2,ncounts>1 & nests>0) 
+
+# calculating population level slope
+slopeN <-na.omit(data.frame((nestm3 %>%
+                              group_by(site_id,Lat,Lon) %>%
+                              do({
+                                mod=glm(nests~season_starting,family="poisson",
+                                data=.)
+                                data.frame(Intercept=coef(mod)[1],
+                                           Slope=coef(mod)[2])}))))
+```
+
+### Sanity check:
+
+> We use 'sanity check' exploratory plots as part of additional data exploration  
+
+```{r sanity check1, warning=TRUE, message=TRUE}
+# WCO: aside some sites have positive glm slopes (growth) but 
+# negative proportion change (calculated below) e.g. site_id == "SPTR"
+# Reminds me of recommendation by Hill et al. (2019) J of Crustacean Biology 39:316-322.
+# "Avoid diagnosing or rejecting a multi-year trend based on a comparison of two years."
+
+chck = subset(nestm3, nestm3$site_id == "SPTR")
+chck = chck[order(chck$season_starting),]
+ggplot(data = chck, aes(season_starting, nests)) + 
+         geom_point()+
+         geom_smooth(method='lm', formula= y~x) + 
+         geom_segment(aes(x = min(chck$season_starting), 
+                          y = chck$nests[1], 
+                          xend = max(chck$season_starting), 
+                          yend = chck$nests[10]), colour = "red") +
+         theme_bw()+
+  annotate("text", x=2008, y=180, label= "site_id == 'SPTR'") 
+
+# The model slopes are the same if the decrease is the same. 
+# E.g. these two sites halved in size and have the same slope (0.01925409) 
+# (but different intercepts)
+  
+subset(nestm3, nestm3$site_id == 'ANDE')
+subset(slopeN, slopeN$site_id == 'ANDE')
+
+subset(nestm3, nestm3$site_id == 'AILS')
+subset(slopeN, slopeN$site_id == 'AILS')
+```
+> Here it is clear that there is rounding of numbers (100, 200, 3000, 6000). Rounding can contribute to uncertainty in true trends.
+
+
+## Some summary stats (Krüger 2023)
+
+```{r glm summary, warning=TRUE, message=TRUE}
+
+sloN <-merge(slopeN,countsN2) # number of counts for each population by merging
+
+summary(as.factor(sloN$ncounts))
+
+sloN$stdSlope<-sloN$Slope/sloN$interval
+mean(sloN$Slope)
+
+sd(sloN$Slope)/sqrt(length(sloN$Slope)-1)
+
+# Note: original code was < but need to include <= to get the same results as older R versions (different treament of 'zero' in newer R version)
+mean(sloN$Slope[sloN$Slope<=0])  
+# Note: original code was < but need to include <= to get the same results as older R versions (different treament of 'zero' in newer R version)
+sd(sloN$Slope[sloN$Slope<=0])/sqrt(length(sloN$Slope[sloN$Slope<=0])-1)
+
+# number of populations
+length(sloN$Slope) 
+
+# Note: number of decreasing populations: # original code was < but need to include <= to get the same results as older R versions (different treament of 'zero' in newer R version)
+length(sloN$Slope[sloN$Slope<=0]) 
+
+# proportion of decreasing populations
+length(sloN$Slope[sloN$Slope<=0])/length(sloN$Slope) 
+
+```
+## Identify first and last counts
+
+```{r first and last counts, warning=TRUE, message=TRUE}
+
+# identify year of first count
+firstN<-ddply(nestM, c("site_id"), summarise,
+              Ncounts=length(nests),
+              season_starting=min(season_starting)) 
+
+# counts on the first year
+firstCount<-merge(nestM,firstN) 
+
+# identify year of last count
+lastN<-ddply(nestM, c("site_id"), summarise,
+             season_starting=max(season_starting)) 
+
+# counts of the last year
+lastCount<-merge(nestM,lastN) 
+
+summary(firstCount$Ncounts)
+
+# change names to join data frames
+names(firstCount)[names(firstCount) == 'season_starting'] <- 'First'
+names(firstCount)[names(firstCount) == 'nests'] <- 'FirstCount'
+names(lastCount)[names(lastCount) == 'season_starting'] <- 'Last'
+names(lastCount)[names(lastCount) == 'nests'] <- 'LastCount'
+firlas<-merge(firstCount,lastCount,by=c("site_id","Lat","Lon")) # first and last counts
+firlas<-subset(firlas,Ncounts>1) # subset only pops with more than one count
+firlas$PercChange<-((firlas$LastCount/firlas$FirstCount)-1)*100 #percentual change
+firlas$PercChange[is.na(as.numeric(firlas$PercChange))]<-0  # make NA = 0
+Slope.Counts<-merge(firlas,sloN,by=c("site_id","Lat","Lon")) # merge slope and counts
+summary(Slope.Counts$PercChange) #### percent change at the population level
+sd(Slope.Counts$PercChange) /sqrt(length(Slope.Counts$PercChange)-1) # standard error
+```
+
+## Krüger 2023 Figure 2 proportion decrease
+
+```{r decline figure}
+#subset only decreasing populations (WCO: THIS ALSO SELECTS (ONE) STABLE POPULATION)
+# original code was < but need to include <= to get the same results as older R versions (different treatment of 'zero')
+
+decr<-subset(Slope.Counts,Slope<=0) 
+decr$YearDecr<-(-1*decr$Slope) # decrease per year
+decr$PercDecr<-(-1*decr$PercChange) # absolute percent decrease
+
+### classify range of decrease in categories ($decrCat)
+decr$decrCat[decr$PercDecr<=25]<-"less than 25%"
+decr$decrCat[decr$PercDecr>25 & decr$PercDecr<=50]<-"25% to 50%"
+decr$decrCat[decr$PercDecr>50 & decr$PercDecr<=75]<-"50% to 75%"
+# WCO: CODING ERROR / BUG. SELECTS >55 %, NOT 75%
+decr$decrCat[decr$PercDecr>55]<-"more than 75%" 
+decr$decrCat<-factor(decr$decrCat,levels=c("less than 25%",
+                                           "25% to 50%",
+                                           "50% to 75%",
+                                           "more than 75%")) # order of levels
+n<-ddply(decr, c("decrCat"), summarise,
+         N=length(FirstCount))
+n
+
+sum(n$N) # check number of pops
+
+n$perc<-n$N/83 # percentage of populations in each categories
+
+perc_original = n$perc
+
+#figure 2
+ggplot(decr,aes(decrCat,FirstCount))+
+  geom_hline(yintercept=2500)+
+  geom_boxplot()+
+  coord_flip()+theme_bw()+th+
+  xlab("Percentage of decrease")+
+  ylab("Population size at first count")+
+  ggtitle(label="a. Decrease vs population size")
+
+
+fig2a = ggplot(decr,aes(decrCat,FirstCount))+
+  geom_hline(yintercept=2500)+
+  geom_boxplot()+
+  geom_boxplot(data=decr[decr$decrCat=="more than 75%",],
+                        aes(x = decrCat, y = FirstCount),fill="steelblue2")+
+  geom_boxplot(data=decr[decr$decrCat=="50% to 75%",],
+                        aes(x = decrCat, y = FirstCount),fill="steelblue2")+
+  coord_flip()+theme_bw()+th+
+  xlab("Percentage of decrease")+
+  ylab("Population size at first count")+
+  ggtitle(label="Incorrect assignment of populations (Kruger 2023)") +
+  annotate("text", x = c(1.1, 2.1, 3.1, 4.1, 4.5), 
+           y = c(73500, 73500, 73500,73500,73500), 
+           label = c("19 (22.89 %)", "21 (25.30 %)", 
+                     "5 (6.02 %)", "38 (45.78 %)", 
+                     "No. colonies"), size=4)
+  
+fig2a
+```
+
+> The above figure is incorrect as it includes population declines >55 % in the >75 % category (coding error). In other words, there are too many populations included in the >75 % category.
+
+## Corrected Figure 2
+
+```{r decline figure corrected}
+# subset only decreasing populations (THIS ALSO SELECTS 1 STABLE POPULATION)
+decr<-subset(Slope.Counts,Slope<0) 
+decr$YearDecr<-(-1*decr$Slope) # decrease per year
+decr$PercDecr<-(-1*decr$PercChange) # absolute percent decrease
+### classify range of decrease in categories ($decrCat)
+decr$decrCat[decr$PercDecr<=25]<-"less than 25%"
+decr$decrCat[decr$PercDecr>25 & decr$PercDecr<=50]<-"25% to 50%"
+decr$decrCat[decr$PercDecr>50 & decr$PercDecr<=75]<-"50% to 75%"
+# This line had a CODING ERROR / BUG. it selected >55 %, NOT 75%
+decr$decrCat[decr$PercDecr>75]<-"more than 75%"                            
+decr$decrCat<-factor(decr$decrCat,levels=c("less than 25%",
+                                           "25% to 50%",
+                                           "50% to 75%",
+                                           "more than 75%")) # order of levels
+n<-ddply(decr, c("decrCat"), summarise,
+         N=length(FirstCount))
+n
+
+#sum(n$N) # check number of pops
+
+n$perc<-n$N/83 # percentage of populations in each categories
+
+perc_corrected =n$perc
+
+## original manuscript percentage of populations in each category
+print(perc_original)
+
+#### corrected percentage of populations in each category
+perc_corrected
+
+#figure 2 corrected
+
+fig2b = ggplot(decr,aes(decrCat,FirstCount))+
+  geom_hline(yintercept=2500)+
+  geom_boxplot()+
+  geom_boxplot(data=decr[decr$decrCat=="more than 75%",],
+                        aes(x = decrCat, y = FirstCount),fill="steelblue2")+
+  geom_boxplot(data=decr[decr$decrCat=="50% to 75%",],
+                        aes(x = decrCat, y = FirstCount),fill="steelblue2")+
+  coord_flip()+theme_bw()+th+
+  xlab("Percentage of decrease")+
+  ylab("Population size at first count")+
+  ggtitle(label="Correct assignment of populations") +
+   annotate("text", x = c(1.1, 2.1, 3.1, 4.1, 4.5), 
+            y = c(73500, 73500, 73500,73500,73500), 
+          label = c("19 (22.89 %)", "21 (25.30 %)", 
+                    "26 (31.33 %)", "17 (20.48 %)", "No. colonies"), 
+          size=4)
+
+fig2b 
+
+# library(cowplot)
+# plot_grid(fig2a, fig2b) 
+          
+## Save Plot 
+#  pdf("./Figure 2.pdf", useDingbats = FALSE, width = 14, height = 7)
+#  plot_grid(fig2a, fig2b,
+#            labels = "AUTO", scale = 0.9, vjust = 2, hjust = -4)
+# dev.off()
+
+```
+
+## MCMCglmm mixed model data
+
+```{r Data for mixed model,  warning=TRUE, message=FALSE}
+
+nestM3<- nestm3   #populations with at least 2 counts and with any nest recorded
+length(unique(nestM3$site_id))
+         
+```
+
+> What is the sample size per site? Krüger (2023) reports 133 sites, but the count here is 146 unique sites. But the code gave 133 sites above. Why do we get both 133 and 146? Some sites have 2 counts (e.g., TAYL) but one of the counts are zero. TAYL is included in the nestm3 data frame. It remains in there because the filter (nestm3; paper's code above) is on ncounts>1 & nests>0), and nests is the variable that counts how many nest counts were made. But that variable does not condition on the counts being more than 0. 133 sites had more than one data point in nestM3. 146 sites were included in the GLMM analysis, including some sites with only 1 count.
+ 
+ 
+## Specify MCMCglmm mixed model prior (Krüger 2023)
+
+```{r mixed model prior,  warning=TRUE, message=FALSE}
+prior<- list(R = list(V = 1, nu = 0.002),
+             G = list(G1 = list(V = diag(2), nu = 0.002,
+                                alpha.mu = rep(0, 2),
+                                alpha.V= diag(133, 2, 2))))
+``` 
+
+## Fit MCMCglmm mixed model (Krüger 2023)
+
+```{r mixed model,  warning=TRUE, message=FALSE}
+
+mc1<-MCMCglmm(nests~season_starting, random=~us(1 + Lat):site_id, rcov=~units, 
+              family="poisson", mev=NULL,
+              data=nestM3, start=NULL, nodes="ALL", scale=TRUE, 
+              nitt=13000, thin=10, burnin=3000, 
+              pr=T, pl=FALSE, verbose=TRUE, DIC=TRUE, singular.ok=FALSE, 
+              saveX=TRUE,prior=prior, saveZ=TRUE, saveXL=TRUE, slice=FALSE,
+              ginverse=NULL, trunc=FALSE)
+
+# Note: low ESS for random effects. Random effect ESS was 25-27 in Kruger (2023),
+# (see supplement), so this is not only a problem that we are encountering. 
+
+summary(mc1) 
+```
+
+> Random effect syntax: ~us fit different variances across each component in formula, plus the covariances.  The linear model inside the variance function has two parameters, an intercept(1) and a regression slope associated with latitude. Each site now has an intercept and a slope specified. But slope (latitude) does not vary within site, and there is only one count per year, per site. This is not a good random effect model structure. 
+
+### Sanity check:
+
+```{r latitude,  warning=TRUE, message=FALSE}
+
+# Each site only has one latitude value (should be 1)
+uniqueLat = nestM3  %>%
+  group_by(site_id) %>%
+  dplyr::summarise(count = n_distinct(Lat)) 
+
+max(uniqueLat$count)
+
+length(unique(nestM3$Lat))
+length(unique(nestM3$site_id))
+
+```
+
+## MCMCglmm model checking 
+
+> It is important to evaluate the fit of the model. We saw very low effective sample sizes in the model summary, above. We do further model checking below which shows poor mixing of MCMC chains. 
+
+```{r mixed model diagnostics,  warning=TRUE, message=FALSE}
+
+# The samples from the posterior distribution are stored as mcmc objects, 
+# which can be summarized and visualized using the coda package
+
+# from MCMC Course notes (page 60):
+# Aim to store 1,000-2,000 iterations and have the autocorrelation between 
+# successive stored iterations less than 0.1 (page 22).
+
+# Assessing model convergence. We do this separately for both fixed 
+# and random effects. The trace plot should look like a fuzzy caterpillar
+# plot(mc1$Sol)
+
+# variances of the random effects (trace plots)
+plot(mc1$VCV)
+
+# It looks like some of the variances of the random effects haven’t 
+# mixed very well. 
+
+# what are the effective sample size for the random effects? 
+coda::effectiveSize(mc1$VCV)
+# The effective sample size is very small.
+
+k = 1 # number of fixed effects
+autocorr(mc1$Sol[, 1:k])  # fine - low correlation
+
+# from MCMC Course notes (page 60):
+diag(autocorr(mc1$VCV)[2, , ])   # very high autocorrelation
+
+# Compare the effective sample sizes between mc2 and mc_Kr
+# The rvariance components of the Kruger model has MCMC sampling problems
+coda::effectiveSize(mc1$VCV)
+
+# check that the mcmc chain is mixing well - should be “white noise” 
+#lattice::xyplot(as.mcmc(mc1$Sol), layout=c(6,5), par.strip.text=list(cex=0.5))
+
+# the variance components
+traceK = lattice::xyplot(as.mcmc(mc1$VCV), par.strip.text=list(cex=0.8), col = "red")
+traceK 
+```
+
+## MCMCglmm Random effects (Krüger 2023)
+
+```{r mixed model random effects,  warning=TRUE, message=FALSE}
+sol<-data.frame(mc1$Sol) # random effects
+# names(sol)
+solm<-reshape2::melt(sol,id.vars=c("X.Intercept.","season_starting"))
+# head(solm)
+solm$site_id<-substring(solm$variable,first=22,last=26)  
+
+```
+
+> The code above drops all the 'Lat.site_id' (these were the slopes) because 'site_id' is blank for them in solm. It keeps only the X.Intercept..site_id. The idea was to plot the slope (decrease in population size), not the intercepts. sigma X.Intercept is the amount of variation in intercepts between sites and sigma Lat would be the amount of variation in the regression slopes between sites. 
+One pointer that helps identify that we are not plotting slopes is that the y-axis is from 0 to 40.
+Yet, Figure 3B in Krüger 2023 looks similar to the one produced from our own analysis (for the same data). However, later analysis shows that they are not nearly equivalent (the position of the sites are entirely different - see below)
+
+```{r mixed model random effects processing,  warning=TRUE, message=FALSE}
+
+ranef = plyr::ddply(solm, c("site_id"), summarise,
+        int=mean(value), 
+        intsd=sd(value),  
+        intse=intsd/sqrt(length(value)-1))
+
+rlat<-merge(ranef,slopeN,by="site_id")
+
+```
+
+## Predicting counts from mixed model (1960 to 2020) (Krüger 2023)
+
+```{r mixed model prediction,  warning=TRUE, message=FALSE}
+
+# construct an hypothetical dataframe to generate the populations estimaters
+years<-data.frame(season_starting=c(1960:2020)) 
+pops<-data.frame(site_id=countsN$site_id[countsN$ncounts>1],
+                 Lat=countsN$Lat[countsN$ncounts>1])
+popy<-merge(pops,years)
+popy$nests<-c(0) ### MCMCglmm needs a column with the response variable
+popypred<-data.frame(predict(mc1,newdata=popy,type="response",
+                            marginal=mc1$Random$formula,
+                            interval="prediction", posterior="mean"))
+popy$fit<-popypred$fit
+# Add lower and upper prediction intervals to the data used for inference
+popy$lwr<-popypred$lwr
+popy$upr<-popypred$upr
+
+```
+
+> The prediction above contains a high degree of uncertainty, which was ignored. The uncertainty is the lwr and upr columns, which is the Highest Posterior Density intervals, I believe, from coda::HPDinterval. https://rdrr.io/cran/MCMCglmm/src/R/predict.MCMCglmm.R*   
+
+> Here, the syntax marginal=mc1$Random$formula was used. This means random effects were marginalized (see simulation study). 
+
+## How accurate are the predictions relative to observed data?
+
+> Let us plot the observed data against predicted data, per site, to see whether observed data and predicted data agree. 
+
+```{r figure chris, message=FALSE, warning=FALSE}
+required_n_pages = round(133/16)+1
+
+for(i in 1:required_n_pages){
+
+print(ggplot(data = popy) + 
+    geom_line(aes(x = season_starting, y = fit), col = "steelblue",linewidth=1.04) + 
+    geom_line(aes(x = season_starting, y = lwr), col = "steelblue1", 
+              linetype="dotted", linewidth = 1.02) + 
+    geom_line(aes(x = season_starting, y = upr), col = "steelblue1",
+              linetype="dotted",linewidth = 1.02) + 
+    geom_point(data = nestm3, aes(season_starting, y = nests), 
+               color = "red", cex = 2) + 
+    geom_line(data = nestm3, aes(season_starting, y = nests), 
+              color = "red",linewidth=0.8) +
+    theme_bw() + 
+    xlab("Year") +
+    ylab("Predicted count") + 
+  #  theme(strip.text = element_text(size = 1.5)) +
+    facet_wrap_paginate(~ site_id, ncol = 4, nrow = 4, 
+                        page = i,
+                        scales = 'free'))}
+
+# Blue solid lines are the predicted abundance (posterior mean) used by Krüger (2023)
+# to predict regional declines. Light blue dots are the 95 % Highest Posterior Density
+# interval for this prediction. Red points are the observed counts 
+# (connected with a red line).
+
+```
+
+## Figure 3A (Krüger 2023)
+
+```{r figure 1}
+
+p1v2<-ggplot(popy,aes(season_starting,fit/1000))+
+  geom_smooth()+
+  geom_point(alpha=0.15)+xlab("Year")+
+  theme_bw()+th+ylab("Thousand nests")+
+  ggtitle(label="a. Predicted count of nests")+
+  scale_y_log10() # plot from the predicted fit
+
+p1v2
+```
+
+> This figure plots all the individual site level predictions. It cannot be sensible given the poor model fit and predictions shown above. On some model runs the output look similar to that of Kruger (2023). In other model runs the y-axis scale is much larger (e.g. to 1e+05). 
+
+## Figure 3B (Krüger 2023)
+
+> This plots the MCMCglmm intercept - it is (even) labelled "int" here. But the paper legend says slope (which is what we are interested in). This figure makes use of a very poor fitting model (mc1), but initally the output looks similar to that from our own analysis. That is because both plots latitude on the x-axis - so the distibution of points on the x-axis are the same. The sites vary a lot on the y-axis. This plot does not represent changes in population rate of change.  
+
+> The error bar is calculated as sd/2. The paper caption refers to 'standard deviation'
+But why divide the standard deviation by 2? 
+
+```{r figure 2}
+p2<- ggplot(subset(rlat,Lat>(-67)),aes(Lat,int))+        
+  stat_smooth(method="gam",formula=y~s(x,k=2))+
+  geom_errorbar(aes(ymin=int-(intsd/2),ymax=int+(intsd/2)),alpha=0.5)+
+  geom_point(alpha=0.5)+
+  theme_bw()+th+
+  ggtitle(label="b. Random effect")+
+  ylab("Slope")+xlim(-66,-60)+
+  xlab("Latitude")
+
+p2
+
+# ps: as results are based on randomization
+# expect slight differences every time you run the model
+# but the trends are consistent everytime
+# lagged analysis to determine how much pops have decreased
+
+```
+
+## Population change in 3 generations
+
+> We did not consider this part of the Krüger (2023) analysis, as it is dependent on the above predictions to be reasonable approximations of (observed) abundance.
+
+```{r population change Kruger, warning=FALSE}
+
+library(lubridate)
+library(tidyr)
+#library(tidyquant)
+library(dplyr)
+library(broom)
+library(purrr)
+library(stringr)
+library(knitr)
+#library(timetk)
+
+# Use library(xts) instead, below:
+
+head(popy)
+
+popT<-ddply(popy, c("season_starting"), summarise,
+            tot=sum(fit), ### total population
+            mean=mean(fit)) ### mean population
+
+# create a time stamp for year
+popT$TS<-(as.POSIXct(strptime(paste(popT$season_starting,c("01-01"),sep="-"),
+                              format="%Y-%m-%d" ,tz="GMT")) ) 
+# create a time stamp for year
+popy$TS<-(as.POSIXct(strptime(paste(popy$season_starting,c("01-01"),sep="-"),
+                              format="%Y-%m-%d" ,tz="GMT")) ) 
+
+mts<-xts::xts(popT$tot,order.by=popT$TS) # create a temporal data frame
+
+# create a lag data frame
+mlag<-((data.frame(year=popT$season_starting,mts %>%
+                     xts::lag.xts(k = c(0,27,28,29,30)))))
+mlag
+
+# proportional change for all lags
+mlag$ch3<-(mlag$lag0/mlag$lag27)-1
+mlag$ch4<-(mlag$lag0/mlag$lag28)-1
+mlag$ch5<-(mlag$lag0/mlag$lag29)-1
+mlag$ch6<-(mlag$lag0/mlag$lag30)-1
+
+mlags<-data.frame(year=mlag$year,mlag[7:10])
+
+chm<-na.omit(melt(mlags,id.vars="year"))
+summary(chm$value)
+
+quantile(chm$value,probs=0.95)
+quantile(chm$value,probs=0.05)
+mean(chm$value)
+sd(chm$value)
+
+
+p3<-ggplot(chm,aes(value*100))+
+  geom_histogram(aes(y = ..density..), colour = 1, fill = "white") +
+  geom_density(lwd = 1.2, linetype = 2,colour = 2)+
+  theme_bw()+th+
+  geom_vline(xintercept = c(-22.4,-27.0,-31.1),linetype="dotted")+
+  xlab("Population size percent change")+
+  ggtitle(label="c. Population change in three generations")
+
+p3
+
+# p1v2/p2/p3
+
+```
+
+
+# Reanalysis for Oosthuizen et al. 
+
+## Fit a better GLMM 
+
+> How is this model different to Kruger (2023)? Here, we used the same data, but we:
+ 1) used a different model specification for fixed and random effects
+ 2) z-standardized the covariates before running the model
+ 3) used longer mcmc chains
+ 4) when predicting from the fitted model, we did not marginalise the random effects
+
+```{r fit a better model, warning=TRUE, message=FALSE}
+# head(nestM3)
+
+# Covariates should be standardized. 
+nestM3$Zseason_starting = scale(nestM3$season_starting)
+nestM3$ZLat = scale(nestM3$Lat)
+```
+```{r hide all the mcmc iterations, results='hide'}
+mc2 <- MCMCglmm(nests ~ Zseason_starting * ZLat, 
+                random=~us(1 + Zseason_starting):site_id, 
+                rcov=~units,
+              family="poisson", mev=NULL,
+              data=nestM3,start=NULL, nodes="ALL", scale=TRUE, 
+              nitt=23000, thin=10, burnin=13000, pr=T,
+              pl=FALSE, verbose=TRUE, DIC=TRUE, singular.ok=FALSE, saveX=TRUE,
+              prior=prior, saveZ=TRUE, saveXL=TRUE, slice=FALSE, 
+              ginverse=NULL, trunc=FALSE)
+
+```
+
+```{r mc2 summary, warning=TRUE, message=FALSE}
+summary(mc2)
+```
+
+## MCMCglmm diagnostics for mc2
+
+> Assessing model convergence. We do this separately for both fixed and random effects. The trace plot should look like a fuzzy caterpillar
+
+```{r fit mc2 output, warning=TRUE, message=FALSE}
+# plot(mc2$Sol)
+
+# variances of the random effects - shows good mixing
+plot(mc2$VCV)
+
+# what are the effective sample size for the random effects? 
+coda::effectiveSize(mc2$VCV)
+# The effective sample size is large
+
+# from MCMC Course notes (page 60):
+diag(autocorr(mc2$VCV)[2, , ])   # low autocorrelation
+
+# the variance components
+trace2 = lattice::xyplot(as.mcmc(mc2$VCV), par.strip.text=list(cex=0.8))
+
+cowplot::plot_grid(traceK, trace2, labels = c('Kruger (2023)', 'Oosthuizen et al'), ncol = 2, label_size = 12)
+
+# Save Plot 
+# pdf("./figures/Supp_Trace plots.pdf",
+#       useDingbats = FALSE, width = 8, height = 12)
+# cowplot::plot_grid(traceK, trace2, labels = c('A', 'B'), 
+#                    ncol = 2, label_size = 14,  vjust = 3.5, hjust = -.5)
+# dev.off()
+
+```
+
+## Predict using MCMCglmm mc2
+
+```{r predict mc2, warning=TRUE, message=FALSE}
+
+# construct an hypothetical dataframe to predict to
+
+# need to predict to z-standardized variables 
+Z1 = dplyr::select(nestM3, season_starting, Lat)
+Z2 <- scale(Z1)
+attr(Z2,"scaled:center")
+attr(Z2,"scaled:scale")
+
+ave_ss = attr(Z2,"scaled:center")[[1]]
+ave_lat = attr(Z2,"scaled:center")[[2]]
+
+sd_ss = attr(Z2,"scaled:scale")[[1]]
+sd_lat = attr(Z2,"scaled:scale")[[2]]
+
+years<-data.frame(season_starting=c(1960:2020)) # extrapolate to 1960
+#years<-data.frame(season_starting=c(1980:2020)) # extrapolate to 1980    
+
+pops<-data.frame(site_id=countsN$site_id[countsN$ncounts>1],
+                 Lat=countsN$Lat[countsN$ncounts>1])
+popy<-merge(pops,years)
+popy$nests<-c(0) ### MCMCglmm needs a column with the response variable
+
+popy$Zseason_starting = (popy$season_starting - ave_ss)/sd_ss
+popy$ZLat = (popy$Lat - ave_lat)/sd_lat
+
+head(popy)
+
+# Don't extrapolate more than X years
+first_last_season = nestM3 %>% 
+        dplyr::group_by(site_id) %>%
+        dplyr::summarise(minyear = min(season_starting),
+                         maxyear = max(season_starting)) %>%
+        dplyr::arrange(minyear)
+first_last_season 
+
+popy = merge(popy, first_last_season)
+
+# subset so that you only predict for sites with counts at least 20 years from begin and end
+
+#popy = subset(popy, popy$minyear < 1990)
+#popy = subset(popy, popy$maxyear > 2010)
+
+length(unique(popy$site_id))
+
+popypred <- data.frame(predict(mc2, 
+                             newdata=popy,
+                             type="response",
+                             marginal=NULL,      # crucial, and not default code.
+                             interval="prediction",
+                             posterior="all"))
+
+head(popypred)
+
+popy$Zfit = popypred$fit
+popy$Zlwr = popypred$lwr
+popy$Zupr = popypred$upr
+
+## How accurate are the predictions relative to observed data?
+
+```
+
+## Conditional model predictions
+
+> Plot the observed data against predicted data, per site, to see whether observed data and predicted data agree for the revised analysis 
+
+```{r predict mc2 conditional, warning=TRUE, message=FALSE}
+required_n_pages = round(133/16)+1
+
+for(i in 1:required_n_pages){
+
+print(ggplot(data = popy) + 
+    geom_line(aes(x = season_starting, y = Zfit), 
+              col = "steelblue", linewidth=1.04) + 
+    geom_line(aes(x = season_starting, y = Zlwr), 
+              col = "steelblue1", linetype="dotted", linewidth = 1.02) + 
+    geom_line(aes(x = season_starting, y = Zupr), 
+              col = "steelblue1", linetype="dotted", linewidth=1.02) + 
+    geom_point(data = nestm3, aes(season_starting, y = nests), 
+               color = "red", cex = 2) + 
+    geom_line(data = nestm3, aes(season_starting, y = nests), 
+              color = "red",linewidth=0.8) +
+    theme_bw() + 
+    xlab("Year") +
+    ylab("Predicted count") + 
+  #  theme(strip.text = element_text(size = 1.5)) +
+    facet_wrap_paginate(~ site_id, ncol = 4, nrow = 4, 
+                        page = i,
+                        scales = 'free'))}
+ 
+# Predictions are good, although back-predicting to 1960 is extrapolation 
+# (there are only 2 counts prior to 1970) so uncertainty (prediction intervals)
+# is high.
+```
+
+
+## Marginal model predictions
+
+```{r predict mc2 marginal, warning=TRUE, message=FALSE}
+
+# This predicts the population average response - i.e., a similar prediction at all sites.
+# If you are adding up the individual sites, as Kruger 2023 did to calculate popT,
+# then you are adding predictions of the average response every time.
+popypred_marg <- data.frame(predict(mc2, 
+                             newdata=popy,
+                             type="response",
+                             #marginal=NULL,      # crucial, and not default code.
+                             marginal=~us(1 + Zseason_starting):site_id,
+                             interval="prediction",
+                             posterior="all"))
+
+popy$Zfit_marg = popypred_marg$fit
+popy$Zlwr_marg = popypred_marg$lwr
+popy$Zupr_marg = popypred_marg$upr
+
+## How accurate are the predictions relative to observed data?
+
+required_n_pages = round(133/16)+1
+
+for(i in 1:required_n_pages){
+
+print(ggplot(data = popy) + 
+    geom_line(aes(x = season_starting, y = Zfit_marg), 
+              col = "steelblue", linewidth=1.04) + 
+    geom_line(aes(x = season_starting, y = Zlwr_marg), 
+              col = "steelblue1", linetype="dotted", linewidth = 1.02) + 
+    geom_line(aes(x = season_starting, y = Zupr_marg), 
+              col = "steelblue1", linetype="dotted", linewidth=1.02) + 
+    geom_point(data = nestm3, aes(season_starting, y = nests), 
+               color = "red", cex = 2) + 
+    geom_line(data = nestm3, aes(season_starting, y = nests), 
+              color = "red",size=0.8) +
+    theme_bw() + 
+    xlab("Year") +
+    ylab("Predicted count") + 
+  #  theme(strip.text = element_text(size = 1.5)) +
+    facet_wrap_paginate(~ site_id, ncol = 4, nrow = 4, 
+                        page = i,
+                        scales = 'free'))}
+
+```
+
+## Revised plots of latitude and slope (population change)
+
+```{r RE, warning=FALSE, message=FALSE}
+# extract random effects from MCMCglmm
+# https://stackoverflow.com/questions/64562052/extract-random-effects-from-mcmcglmm
+library(broom.mixed)
+re = tidy(mc2, effects="ran_vals")
+unique(re$group)
+re = re %>% 
+    dplyr::select(-group, -effect) %>%
+    pivot_wider(names_from = term, values_from = c(estimate, std.error))
+
+head(re)
+
+# estimate_(Intercept) is related to the initial population size
+# estimate_Zseason_starting is the slope of population increase (+) 
+# or decrease (-)
+
+names(re) = c("site_id", "est_int", "estZss",
+              "se_int", "seZss")
+# add latitude
+nestM3_lat = dplyr::select(nestM3, Lat, site_id) %>% 
+             dplyr::distinct(site_id, Lat)
+
+re = left_join(re, nestM3_lat, by = "site_id")
+
+# plot relationship between slope and latitude
+
+ggplot(data = re, aes(x = Lat, y = estZss))+
+  stat_smooth(method="gam",formula=y~s(x,k=2))+
+  # geom_smooth(method='lm', formula= y~x)+
+  geom_point()+
+  geom_errorbar(aes(ymin=estZss-seZss,
+                    ymax=estZss+seZss))+
+  theme_bw()+th+
+  ylab("Slope")+xlim(-66,-60)+
+  xlab("Latitude")+ 
+  geom_hline(yintercept=0, 
+             color = "red")
+
+ggplot(data = re, aes(x = Lat, y = estZss, label = site_id))+
+  stat_smooth(method="gam",formula=y~s(x,k=2))+
+  # geom_smooth(method='lm', formula= y~x)+
+  geom_point()+
+  geom_text(hjust=0, vjust=0) + 
+  geom_errorbar(aes(ymin=estZss-seZss,
+                    ymax=estZss+seZss))+
+  theme_bw()+th+
+  ylab("Slope")+xlim(-66,-60)+
+  xlab("Latitude")+ 
+  geom_hline(yintercept=0, 
+             color = "red")
+
+```
+
+> The following figures plot the data from the original study
+
+# Oosthuizen et al data distribution figures
+
+```{r figures of data, warning=FALSE, message=FALSE}
+
+# This shows that there are some 1-count sites in the data being analysed 
+# (n = 146, not n = 133)
+samplesize = nestM3 %>% group_by(site_id, ncounts) %>% tally()
+length(unique(nestM3$site_id))
+
+samplesize.plot <- samplesize %>%
+  ggplot(aes(x=n)) +
+  geom_histogram(binwidth=1, fill="#69b3a2",  alpha=0.9) +
+  theme_bw()+
+  ylab("Number of sites")+
+  xlab("Number of population counts") + 
+  theme(axis.text=element_text(size=12),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+samplesize.plot
+
+## Save Plot 
+# pdf("./Figure samplesize.pdf",
+#     useDingbats = FALSE, width = 4, height = 4)
+# samplesize.plot
+# dev.off()
+
+samplesizeYear = nestM3 %>% group_by(season_starting) %>% tally()
+#samplesizeYear
+
+samplesizeYear.plot = samplesizeYear %>%
+  ggplot(aes(x=season_starting, y = n)) +
+  geom_bar(stat = "identity", fill="#69b3a2",  alpha=0.9) +
+  theme_bw() +
+  ylab("Number of sites counted")+
+  xlab("Year") + 
+  theme(axis.text=element_text(size=12),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  scale_x_continuous(breaks = seq(1960, 2020, by = 10))
+
+samplesizeYear.plot
+
+## Save Plot 
+# pdf("./Figure samplesizeYear.pdf",
+#     useDingbats = FALSE, width = 6, height = 4)
+# samplesizeYear.plot
+# dev.off()
+
+# time between counts per site
+diff = nestm3 %>% 
+  dplyr::arrange(site_id, season_starting) %>%
+  dplyr::group_by(site_id) %>% 
+  dplyr::mutate(time.difference = season_starting - lag(season_starting))
+#diff
+
+diff.plot = diff %>%
+  ggplot(aes(x=time.difference)) +
+  geom_histogram(binwidth=1, fill="#69b3a2",  alpha=0.9) +
+  theme_bw()+
+  ylab("Count")+
+  xlab("Years elapsed between subsequent counts") + 
+  theme(axis.text=element_text(size=12),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  scale_x_continuous(breaks = seq(0, 50, by = 10))
+
+diff.plot
+
+## Save Plot 
+# pdf("./Figure timedifferance.pdf",
+#     useDingbats = FALSE, width = 6, height = 4)
+# diff.plot
+# dev.off()
+
+library(colorspace)
+library(scales) 
+
+nestm3$countbreaks = cut(nestm3$ncounts, c(0, 2, 3, 5, 9, Inf))
+
+heat = ggplot(nestm3, aes(x = as.numeric(season_starting), 
+                   y = site_id,
+                   fill= cut(ncounts, c(0, 2, 3, 5, 9, Inf),
+                             labels = c('2','3','4 to 5','6 to 9','10+')))) + 
+  geom_tile() +
+  scale_fill_discrete_sequential(palette = "BluGrn", rev = F)+
+  guides(fill=guide_legend(title="Nest counts")) + 
+  theme_bw()+
+  ylab("Site")+
+  xlab("Year") + 
+  theme(axis.text.x=element_text(size=12),
+        axis.title.x=element_text(size=14),
+        axis.text.y = element_text(size = 6),
+        axis.title.y=element_text(size=14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())+
+  scale_x_continuous(breaks = seq(1960, 2020, by = 10))+
+  scale_y_discrete(limits=rev)
+
+heat
+
+## Save Plot 
+# pdf("./Figure samplesize_heat.pdf",
+#     useDingbats = FALSE, width = 7, height = 8)
+# heat
+# dev.off()
+
+library(patchwork)
+combinedfig = (samplesize.plot | diff.plot) / samplesizeYear.plot + 
+  plot_layout(nrow = 2, widths = c(1, 3)) +
+  plot_annotation(tag_levels = 'A')
+combinedfig
+
+## Save Plot 
+# pdf("./figures/Figure combined.pdf",
+#      useDingbats = FALSE, width = 8, height = 6)
+#  combinedfig
+#  dev.off()
+
+```
+
+# Oosthuizen et al - population change:
+
+> How many penguins were there, per year, across all sites? We don't know this from counts, as we only have intermittent counts. Estimate and plot the total population size predicted per year (how many penguins were there in all populations?)
+
+```{r population change Oosthuizen, warning=TRUE, message=TRUE}
+head(popy)
+
+pop_predict = popy %>%
+              dplyr::group_by(season_starting) %>% 
+              dplyr::summarise(total_pred = sum(Zfit),
+                       min_pred = sum(Zlwr),
+                       max_pred = sum(Zupr))
+
+pop_predict.p = ggplot(data = pop_predict) + 
+ geom_line(aes(x = season_starting, y = total_pred), 
+           lty = 2, linewidth = 1.1)+
+  geom_line(aes(x = season_starting, y = min_pred, 
+              color = "Model predicted count"), lty = 2, size = 0.8)+
+  geom_line(aes(x = season_starting, y = max_pred, 
+              color = "Model predicted count"), lty = 2, size = 0.8)+
+  labs(x = "Year", y = "Total population count") +
+  theme_bw()+
+  scale_y_continuous(label = comma)+
+  labs(subtitle = "Total predicted counts across all sites")+
+  guides(color=guide_legend(title="Data source"))+
+  theme(legend.position = c(0.7, 0.9))
+
+pop_predict.p
+
+delta.y = 100 * (pop_predict[61,2] - pop_predict[1,2]) / pop_predict[1,2]
+delta.y
+
+```
+
+# Predicting population change with entire posterior distribution
+
+> Calculate population change over a 30 year period (~ 3 generations according to the original study)
+
+```{r predictions of population change, include=TRUE, message=FALSE, warning=TRUE,fig.width=11,fig.height=7}
+
+# extract posterior draws of fixed effects and random effects
+posterior <- as.matrix(mc2$Sol)
+
+# collect site-level information
+site_and_lat <- nestM3 %>%
+  as_tibble() %>%
+  select(site_id, ZLat) %>%
+  distinct()
+
+site_and_lat
+
+# map years which to predict to (standardised scale)
+# Here, the first year is 1990 and the last year is 2020 (30 year change)
+
+year1 = 1990
+year2 = 2019
+
+first_year <- (year1 - mean(df$year)) / sd(df$year)
+last_year <- (year2 - mean(df$year)) / sd(df$year)
+
+# define function to predict with or without random effects
+get_predictions <- function(posterior,                       
+                            site_and_lat, 
+                            first_year,
+                            last_year,
+                            use_random_effects = FALSE) {
+  # matrices for predictions at each site in year 1 (1990) and year 2 (2020)
+  # each row is a prediction from a different posterior sample, each column is a site
+  pred_pop_per_site.first <- matrix(NA, nrow = nrow(posterior), ncol = nrow(site_and_lat))
+  pred_pop_per_site.last <- matrix(NA, nrow = nrow(posterior), ncol = nrow(site_and_lat))
+  
+  for (s in 1:nrow(posterior)) {
+    theta <- posterior[s,]
+    for (j in 1:nrow(site_and_lat)) {
+      site_id <- site_and_lat$site_id[j]
+      ZLat <- site_and_lat$ZLat[j]
+      
+      # predict pop at site j in first year
+      lin_pred <- theta["(Intercept)"] + 
+        theta["Zseason_starting"] * first_year +
+        theta["ZLat"] * ZLat +
+        theta["Zseason_starting:ZLat"] * first_year * ZLat
+      if (use_random_effects) {
+        lin_pred <- lin_pred + 
+          theta[ str_c("(Intercept).site_id.",site_id) ] +
+          theta[ str_c("Zseason_starting.site_id.",site_id) ] * first_year
+      }
+      pred_pop_per_site.first[s,j] <- exp( lin_pred )
+      
+      # predict pop at site j in last year
+      lin_pred <- theta["(Intercept)"] + 
+        theta["Zseason_starting"] * last_year +
+        theta["ZLat"] * ZLat +
+        theta["Zseason_starting:ZLat"] * last_year * ZLat
+      if (use_random_effects) {
+        lin_pred <- lin_pred + 
+          theta[ str_c("(Intercept).site_id.",site_id) ] +
+          theta[ str_c("Zseason_starting.site_id.",site_id) ] * last_year
+      }
+      pred_pop_per_site.last[s,j] <- exp( lin_pred )
+    }
+  }
+  
+  # sum over sites for population level predictions
+  pred_pop.first <- rowSums(pred_pop_per_site.first)
+  pred_pop.last <- rowSums(pred_pop_per_site.last)
+  
+  # percent change from year1 to year2 
+  pred_pop_change <- 100 * ( pred_pop.last - pred_pop.first ) / pred_pop.first
+  
+  # outputs
+  predictions <- list(pop_per_site.first = pred_pop_per_site.first,
+                      pop_per_site.last = pred_pop_per_site.last,
+                      pop.first = pred_pop.first,
+                      pop.last = pred_pop.last,
+                      pop_change = pred_pop_change)
+  predictions
+}
+
+
+# Make predictions with and without random effects
+pred_re <- get_predictions(posterior, site_and_lat, first_year, last_year,
+                           use_random_effects = TRUE)
+
+# Plot histogram of population change using random effects in prediction:
+hist(pred_re$pop_change, breaks = 20)
+
+# can calculate the probability that the population has decreased by 
+# at least thirty percent with
+mean(pred_re$pop_change < -30)
+
+# estimated population size in year1 (with random effects)
+pred_first = as.data.frame(pred_re$pop.first)
+names(pred_first) = "pred_first"
+#hist(pred_first$pred_first, breaks = 20)
+
+# estimated population size in year2 (with random effects)
+pred_last = as.data.frame(pred_re$pop.last)
+names(pred_last) = "pred_last"
+#hist(pred_last$pred_last, breaks = 20)
+
+#-----------------------------------------------------------------------------
+# pred_no_re <- get_predictions(posterior, site_and_lat, first_year, last_year,
+#                                use_random_effects = FALSE)
+# 
+# # Plot histogram of population change without random effects in prediction:
+# hist(pred_no_re$pop_change, breaks = 20)
+# 
+# # estimated population size in year1 (no random effects)
+# pred_first_noRE = as.data.frame(pred_no_re$pop.first)
+# names(pred_first_noRE) = "pred_first"
+# 
+# # estimated population size in year2 (no random effects)
+# pred_last_noRE = as.data.frame(pred_no_re$pop.last)
+# names(pred_last_noRE) = "pred_last"
+#------------------------------------------------------------------------------
+pop_predict.p + 
+  geom_point(data = pred_first, aes(x = year1, y = pred_first), col = "red") +
+  geom_point(data = pred_last, aes(x = year2, y = pred_last), col = "red")  
+  
+
+```
+
