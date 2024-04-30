@@ -27,7 +27,7 @@ The Krüger (2023) supplementary material provided reproducible R code for that 
 
 ```{r run in r , include=FALSE}
 #library(knitr)
-#knit('./markdown/Reviewing Kruger2023_GLMM comparison.Rmd')
+#knit('./supplement_markdown/SuppCode1_Kruger2023review_GLMMcomparison_Kruger data.Rmd')
 ```
 
 ## Load packages and set plotting theme
@@ -129,7 +129,7 @@ poisson.mtest(nestM2$nests[nestM2$ncounts>1 & nestM2$nests>0],R=199)
 
 ```{r glm, warning=TRUE, message=TRUE}
 # subset only populations with at least 2 counts and with any nest recorded
-nestm3<-subset(nestM2,ncounts>1 & nests>0) 
+nestm3 <-subset(nestM2,ncounts>1 & nests>0) 
 
 # calculating population level slope
 slopeN <-na.omit(data.frame((nestm3 %>%
@@ -508,15 +508,17 @@ popypred<-data.frame(predict(mc1,newdata=popy,type="response",
                             marginal=mc1$Random$formula,
                             interval="prediction", posterior="mean"))
 popy$fit<-popypred$fit
-# Add lower and upper prediction intervals to the data used for inference
+
+# WCO: Add lower and upper prediction intervals to the data used for inference
 popy$lwr<-popypred$lwr
 popy$upr<-popypred$upr
 
+
 ```
 
-> The prediction above contains a high degree of uncertainty, which was ignored. The uncertainty is the lwr and upr columns, which is the Highest Posterior Density intervals, I believe, from coda::HPDinterval. https://rdrr.io/cran/MCMCglmm/src/R/predict.MCMCglmm.R*   
+> The prediction above contains a high degree of uncertainty, which was ignored in the original paper. The uncertainty is the lwr and upr columns, which is the Highest Posterior Density intervals, I believe, from coda::HPDinterval. https://rdrr.io/cran/MCMCglmm/src/R/predict.MCMCglmm.R*   
 
-> Here, the syntax marginal=mc1$Random$formula was used. This means random effects were marginalized (see simulation study). 
+> Here, the syntax marginal=mc1$Random$formula was used. This means random effects were marginalized (see simulation study). posterior="mean" also should not be used, but rather posterior="all".
 
 ## How accurate are the predictions relative to observed data?
 
@@ -566,9 +568,72 @@ p1v2<-ggplot(popy,aes(season_starting,fit/1000))+
 p1v2
 ```
 
-> This figure plots all the individual site level predictions. It cannot be sensible given the poor model fit and predictions shown above. On some model runs the output look similar to that of Kruger (2023). In other model runs the y-axis scale is much larger (e.g. to 1e+05). 
+> This figure plots all the individual site level predictions. It cannot be sensible given the poor model fit and predictions shown above. On some model runs this figure looks the same as that in Kruger (2023). In other model runs the y-axis scale is much larger (e.g. to 1e+05). In other words, the model is very unstable (simply re-run and plot the same model multiple times to confirm this fact). 
 
-## Figure 3B (Krüger 2023)
+## In the above plots, why are the predicted abundance so 'wiggly'?
+
+> The predictions per site is very 'wiggly', which is unexpected for a GLMM model. In addition, the estimated count is sometimes not included in the interval between popy$lwr<-popypred$lwr and popy$upr<-popypred$upr. Why is this so? Let use review the code used for predicion: 
+
+> popypred<-data.frame(predict(mc1,newdata=popy,type="response",
+                       marginal=mc1$Random$formula,
+                       interval="prediction", posterior="mean"))
+                            
+> It is the prediction interval specification that leads to having very 'wiggly' predictions. Prediction intervals are obtained through posterior predictive simulation. Note, however, that in the reanalysis (below) we also specify prediction intervals (to agree with this code) but in that case the predictions do not have such extreme wiggliness, and well-behaved credible intervals.
+
+> Let us plot "confidence" (credible intervals) rather than prediction intervals
+https://www.rdocumentation.org/packages/MCMCglmm/versions/2.35/topics/predict.MCMCglmm
+
+# Change prediction to 'confidence' (credible) interval
+
+```{r confidence intervals}
+
+# you have to change posterior="mean" to posterior="mean" when using interval="confidence", otherwise 
+# there is an error about HPDinterval.mcmc(mcmc(post.pred), prob = level) : obj must have nsamp > 1
+popypred <-data.frame(predict(mc1,newdata=popy,type="response",
+                            marginal=mc1$Random$formula,
+                            interval="confidence", posterior="all"))
+
+popy$fit<-popypred$fit
+# Add lower and upper prediction intervals to the data used for inference
+popy$lwr<-popypred$lwr
+popy$upr<-popypred$upr
+
+required_n_pages = round(133/16)+1
+
+for(i in 1:required_n_pages){
+
+print(ggplot(data = popy) + 
+    geom_line(aes(x = season_starting, y = fit), col = "steelblue",linewidth=1.04) + 
+    geom_line(aes(x = season_starting, y = lwr), col = "steelblue1", 
+              linetype="dotted", linewidth = 1.02) + 
+    geom_line(aes(x = season_starting, y = upr), col = "steelblue1",
+              linetype="dotted",linewidth = 1.02) + 
+    geom_point(data = nestm3, aes(season_starting, y = nests), 
+               color = "red", cex = 2) + 
+    geom_line(data = nestm3, aes(season_starting, y = nests), 
+              color = "red",linewidth=0.8) +
+    theme_bw() + 
+    xlab("Year") +
+    ylab("Predicted count") + 
+  #  theme(strip.text = element_text(size = 1.5)) +
+    facet_wrap_paginate(~ site_id, ncol = 4, nrow = 4, 
+                        page = i,
+                        scales = 'free'))}
+
+# Blue solid lines are the predicted abundance (posterior mean) used by Krüger (2023)
+# to predict regional declines. Light blue dots are the 95 % Highest Posterior Density
+# interval for this prediction. Red points are the observed counts 
+# (connected with a red line).
+
+
+# Extreme / strange values for prediction intervals are perhaps expected given the large 
+# l-95% CI u-95% CI in the model:
+summary(mc1)
+
+```
+
+
+## Figure 3B (Krüger 2023): Latitude
 
 > This plots the MCMCglmm intercept - it is (even) labelled "int" here. But the paper legend says slope (which is what we are interested in). This figure makes use of a very poor fitting model (mc1), but initally the output looks similar to that from our own analysis. That is because both plots latitude on the x-axis - so the distibution of points on the x-axis are the same. The sites vary a lot on the y-axis. This plot does not represent changes in population rate of change.  
 
@@ -596,7 +661,7 @@ p2
 
 ## Population change in 3 generations
 
-> We did not consider this part of the Krüger (2023) analysis, as it is dependent on the above predictions to be reasonable approximations of (observed) abundance.
+> We did not consider this part of the Krüger (2023) analysis, as it is dependent on the above predictions to be reasonable approximations of (observed) abundance. Furthermore, these calculations do not account for any uncertainty in the predicted abundance, which is not a good protocol to follow. 
 
 ```{r population change Kruger, warning=FALSE}
 
@@ -659,7 +724,7 @@ p3<-ggplot(chm,aes(value*100))+
 
 p3
 
-# p1v2/p2/p3
+p1v2/p2/p3
 
 ```
 
@@ -770,10 +835,6 @@ first_last_season
 
 popy = merge(popy, first_last_season)
 
-# subset so that you only predict for sites with counts at least 20 years from begin and end
-
-#popy = subset(popy, popy$minyear < 1990)
-#popy = subset(popy, popy$maxyear > 2010)
 
 length(unique(popy$site_id))
 
@@ -1104,7 +1165,7 @@ site_and_lat <- nestM3 %>%
 site_and_lat
 
 # map years which to predict to (standardised scale)
-# Here, the first year is 1990 and the last year is 2020 (30 year change)
+# Here, use 1990 as the first year and 2019 as the last year  (30 year change)
 
 year1 = 1990
 year2 = 2019
@@ -1118,7 +1179,7 @@ get_predictions <- function(posterior,
                             first_year,
                             last_year,
                             use_random_effects = FALSE) {
-  # matrices for predictions at each site in year 1 (1990) and year 2 (2020)
+  # matrices for predictions at each site in year 1 and year 2 
   # each row is a prediction from a different posterior sample, each column is a site
   pred_pop_per_site.first <- matrix(NA, nrow = nrow(posterior), ncol = nrow(site_and_lat))
   pred_pop_per_site.last <- matrix(NA, nrow = nrow(posterior), ncol = nrow(site_and_lat))

@@ -892,5 +892,228 @@ cowplot::plot_grid(pop_predict_mc2p, pop_predict_Krp, labels = c('A', 'B'),
 # dev.off()
 ```
 
+# Supplement 5 figures
+
+```{r suppl 5 figures, include=TRUE, message=FALSE, warning=TRUE, fig.width=11,fig.height=7}
 
 
+pred_margin_Kr <- data.frame(predict(mc_Kr, 
+                                     newdata=df,
+                                     type="response",
+                                     marginal=mc_Kr$Random$formula,
+                                     interval="prediction",
+                                     posterior="mean"))  # Kruger used mean, but "all" is better
+
+df$fit.mc_Kr_margin <- pred_margin_Kr$fit
+df$lwr.mc_Kr_margin <- pred_margin_Kr$lwr
+df$upr.mc_Kr_margin <- pred_margin_Kr$upr
+
+aa = ggplot(df, aes(x = year, y = fit.mc_Kr_margin, color = as.factor(latitude))) +
+  geom_line() +
+  labs(x = "Year", y = "Count") +
+  scale_color_discrete(name = "Latitude") + 
+  theme_bw() + 
+  scale_y_continuous(label = comma)+
+  labs(title = paste0("Kr",
+                      ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: prediction no random effects"))+
+  theme(plot.title = element_text(size = 12))
+
+
+
+
+pred_margin_Kr <- data.frame(predict(mc_Kr, 
+                                     newdata=df,
+                                     type="response",
+                                     marginal=mc_Kr$Random$formula,
+                                     interval="prediction",
+                                     posterior="mean"))  # Kruger used mean, but "all" is better
+
+df$fit.mc_Kr_margin <- pred_margin_Kr$fit
+df$lwr.mc_Kr_margin <- pred_margin_Kr$lwr
+df$upr.mc_Kr_margin <- pred_margin_Kr$upr
+
+bb = ggplot(df, aes(x = year, y = fit.mc_Kr_margin, color = as.factor(latitude))) +
+  geom_line() +
+  labs(x = "Year", y = "Count") +
+  scale_color_discrete(name = "Latitude") + 
+  theme_bw() + 
+  scale_y_continuous(label = comma)+
+  labs(title = paste0("Kr",
+                      ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: prediction no random effects"))+
+  theme(plot.title = element_text(size = 12))
+
+
+
+
+pred_margin_Kr <- data.frame(predict(mc_Kr, 
+                                     newdata=df,
+                                     type="response",
+                                     marginal=mc_Kr$Random$formula,
+                                     interval="prediction",
+                                     posterior="mean"))  # Kruger used mean, but "all" is better
+
+df$fit.mc_Kr_margin <- pred_margin_Kr$fit
+df$lwr.mc_Kr_margin <- pred_margin_Kr$lwr
+df$upr.mc_Kr_margin <- pred_margin_Kr$upr
+
+cc =  ggplot(df, aes(x = year, y = fit.mc_Kr_margin, color = as.factor(latitude))) +
+  geom_line() +
+  labs(x = "Year", y = "Count") +
+  scale_color_discrete(name = "Latitude") + 
+  theme_bw() + 
+  scale_y_continuous(label = comma)+
+  labs(title = paste0("Kr",
+                      ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: prediction no random effects"))+
+  theme(plot.title = element_text(size = 12))
+
+
+
+
+pred_margin_Kr <- data.frame(predict(mc_Kr, 
+                                     newdata=df,
+                                     type="response",
+                                     marginal=mc_Kr$Random$formula,
+                                     interval="prediction",
+                                     posterior="mean"))  # Kruger used mean, but "all" is better
+
+df$fit.mc_Kr_margin <- pred_margin_Kr$fit
+df$lwr.mc_Kr_margin <- pred_margin_Kr$lwr
+df$upr.mc_Kr_margin <- pred_margin_Kr$upr
+
+dd = ggplot(df, aes(x = year, y = fit.mc_Kr_margin, color = as.factor(latitude))) +
+  geom_line() +
+  labs(x = "Year", y = "Count") +
+  scale_color_discrete(name = "Latitude") + 
+  theme_bw() + 
+  scale_y_continuous(label = comma)+
+  labs(title = paste0("Kr",
+                      ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: prediction no random effects"))+
+  theme(plot.title = element_text(size = 12))
+
+ 
+aa = aa + theme(legend.position="none")
+bb = bb + theme(legend.position="none")
+cc = cc + theme(legend.position="none")
+dd = dd + theme(legend.position="none")
+
+cowplot::plot_grid(aa , bb , cc , dd,
+                    labels = c('A', 'B', 'C', 'D'), ncol = 2, label_size = 12)
+
+# ## Save Plot 
+# pdf("./figure/Supp_Kruger_prediction intervals_without random effects.pdf",
+#       useDingbats = FALSE, width = 10, height = 10)
+# cowplot::plot_grid(aa , bb , cc , dd,
+#                    labels = c('A', 'B', 'C', 'D'), ncol = 2, label_size = 12)
+# dev.off()
+
+
+
+pred_margin_Kr <- data.frame(predict(mc_Kr, 
+                                     newdata=df,
+                                     type="response",
+                                     marginal=NULL,
+                                     interval="prediction",
+                                     posterior="mean"))  # Kruger used mean, but "all" is better
+
+df$fit.mc_Kr_margin <- pred_margin_Kr$fit
+df$lwr.mc_Kr_margin <- pred_margin_Kr$lwr
+df$upr.mc_Kr_margin <- pred_margin_Kr$upr
+
+aa = ggplot(df, aes(x = year, y = fit.mc_Kr_margin, color = as.factor(latitude))) +
+  geom_line() +
+  labs(x = "Year", y = "Count") +
+  scale_color_discrete(name = "Latitude") + 
+  theme_bw() + 
+  scale_y_continuous(label = comma)+
+  labs(title = paste0("Kr",
+                      ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: prediction with random effects"))+
+  theme(plot.title = element_text(size = 12))
+
+
+
+
+pred_margin_Kr <- data.frame(predict(mc_Kr, 
+                                     newdata=df,
+                                     type="response",
+                                     marginal=NULL,
+                                     interval="prediction",
+                                     posterior="mean"))  # Kruger used mean, but "all" is better
+
+df$fit.mc_Kr_margin <- pred_margin_Kr$fit
+df$lwr.mc_Kr_margin <- pred_margin_Kr$lwr
+df$upr.mc_Kr_margin <- pred_margin_Kr$upr
+
+bb = ggplot(df, aes(x = year, y = fit.mc_Kr_margin, color = as.factor(latitude))) +
+  geom_line() +
+  labs(x = "Year", y = "Count") +
+  scale_color_discrete(name = "Latitude") + 
+  theme_bw() + 
+  scale_y_continuous(label = comma)+
+  labs(title = paste0("Kr",
+                      ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: prediction with random effects"))+
+  theme(plot.title = element_text(size = 12))
+
+
+
+
+pred_margin_Kr <- data.frame(predict(mc_Kr, 
+                                     newdata=df,
+                                     type="response",
+                                     marginal=NULL,
+                                     interval="prediction",
+                                     posterior="mean"))  # Kruger used mean, but "all" is better
+
+df$fit.mc_Kr_margin <- pred_margin_Kr$fit
+df$lwr.mc_Kr_margin <- pred_margin_Kr$lwr
+df$upr.mc_Kr_margin <- pred_margin_Kr$upr
+
+cc =  ggplot(df, aes(x = year, y = fit.mc_Kr_margin, color = as.factor(latitude))) +
+  geom_line() +
+  labs(x = "Year", y = "Count") +
+  scale_color_discrete(name = "Latitude") + 
+  theme_bw() + 
+  scale_y_continuous(label = comma)+
+  labs(title = paste0("Kr",
+                      ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: prediction with random effects"))+
+  theme(plot.title = element_text(size = 12))
+
+
+
+
+pred_margin_Kr <- data.frame(predict(mc_Kr, 
+                                     newdata=df,
+                                     type="response",
+                                     marginal=NULL,
+                                     interval="prediction",
+                                     posterior="mean"))  # Kruger used mean, but "all" is better
+
+df$fit.mc_Kr_margin <- pred_margin_Kr$fit
+df$lwr.mc_Kr_margin <- pred_margin_Kr$lwr
+df$upr.mc_Kr_margin <- pred_margin_Kr$upr
+
+dd = ggplot(df, aes(x = year, y = fit.mc_Kr_margin, color = as.factor(latitude))) +
+  geom_line() +
+  labs(x = "Year", y = "Count") +
+  scale_color_discrete(name = "Latitude") + 
+  theme_bw() + 
+  scale_y_continuous(label = comma)+
+  labs(title = paste0("Kr",
+                      ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: prediction with random effects"))+
+  theme(plot.title = element_text(size = 12))
+
+
+aa = aa + theme(legend.position="none")
+bb = bb + theme(legend.position="none")
+cc = cc + theme(legend.position="none")
+dd = dd + theme(legend.position="none")
+
+cowplot::plot_grid(aa , bb , cc , dd,
+                   labels = c('A', 'B', 'C', 'D'), ncol = 2, label_size = 12)
+
+# ## Save Plot 
+# pdf("./figure/Supp_Kruger_prediction intervals_with random effects.pdf",
+#     useDingbats = FALSE, width = 10, height = 10)
+# cowplot::plot_grid(aa , bb , cc , dd,
+#                    labels = c('A', 'B', 'C', 'D'), ncol = 2, label_size = 12)
+# dev.off()
+```
