@@ -1,6 +1,7 @@
 ---
-title: "Supporting documentation: Unreliable inferences about chinstrap penguin population trends: a statistical critique and reanalysis"
-author: "Chris Oosthuizen, Murray Christian, Azwianewi Makhado, Mzabalazo Ngwenya"
+title: "Decreasing trends of chinstrap penguin breeding colonies in a region of major and ongoing environmental change: a statistical critique and reanalysis of Krüger (2023)"
+subtitle: "30-year population change at 71 sites with at least two counts (with accuracy < 5) over a period of at least 10 years"
+author: "Chris Oosthuizen, Murray Christian, Mzabalazo Ngwenya"
 date: "2023-10-05"
 output:
   pdf_document:
@@ -20,7 +21,7 @@ header-includes:
     - \renewtcolorbox{quote}{colback=mycolor}
 ---
 
-# Krüger (2023) reanalysis
+# Context
 
 This script provides a reanalysis of chinstrap penguin population trends, in the context of Krüger (2023) (Citation: Krüger, L. (2023). Decreasing Trends of Chinstrap Penguin Breeding Colonies in a Region of Major and Ongoing Rapid Environmental Changes Suggest Population Level Vulnerability. Diversity, 15(3), 327.). 
 
@@ -31,7 +32,7 @@ This script provides a reanalysis of chinstrap penguin population trends, in the
 
 ```{r run in r , include=FALSE}
 # library(knitr)
-# knit('./markdown/MAPPPDreanalysis_inputdatasubset2.Rmd')
+# knit('./supplement_markdown/SuppCode5_MAPPPDreanalysis_inputdatasubset_71sites.Rmd')
 ```
 
 # Load packages and set plotting theme
@@ -42,13 +43,10 @@ library(tidyverse)
 library(MCMCglmm)
 library(scales)
 library(ggforce)
-
-# plot theme
-th <- theme(axis.text=element_text(size=12, colour="grey30"),
-           axis.title=element_text(size=14),
-           panel.grid.major = element_blank(),
-           panel.grid.minor = element_blank(),
-           title =element_text(size=12, colour="black"))
+library(colorspace)
+library(scales) 
+library(patchwork)
+library(broom.mixed)
 
 ```
 
@@ -63,21 +61,16 @@ df <- read.csv(here::here("./data/mapppd AllCounts_V_4_0.csv"))
 # subset data to chinstrap penguins only
 chins<-subset(df,common_name=="chinstrap penguin") 
 
-summary(as.factor(chins$common_name))
-
-summary(as.factor(chins$count_type))
-
 # subset to use only nest counts
 nests <- subset(chins,count_type=="nests") 
-dim(nests)
+
 # subset to cammlr_region 48.1 and 48.2 
 nests <- subset(nests,cammlr_region =="48.1" | cammlr_region =="48.2") 
-dim(nests)
+
 # remove the most uncertain counts (could be very inaccurate - an order of magnitude) 
 # This is a choice we made for the current analysis.
 # Comment this line of code out to run analysis including uncertain counts
 nests <- subset(nests, accuracy < 5) 
-dim(nests)
 
 nests = subset(nests, nests$season_starting> 1979)
 
@@ -93,11 +86,9 @@ nestM = nests %>%
                       nests = penguin_count) %>%
           dplyr::select(season_starting, site_id, nests, Lat, Lon) 
 
-dim(nestM)
-
 ``` 
  
-# Processed data summary
+## Processed data summary
 
 ```{r data continue, include=TRUE}
 # summarizing number of populations and number of counts
@@ -106,7 +97,6 @@ countsN <- plyr::ddply(nestM, c("site_id","Lat","Lon"), summarise,
                 minseason=(min(season_starting)),
                 maxseason=(max(season_starting)),
                 interval=(max(season_starting)-min(season_starting)))
-head(countsN)
 
 summary(as.factor(countsN$ncounts)) # most populations are only counted once
 
@@ -117,8 +107,8 @@ nestM2 <- merge(nestM,countsN) # add number of counts for each population to nes
 
 # Subset to sites with more than 1 count:
 nestm3 = subset(nestM2, ncounts>1) 
+# Subset to sites with counts at least 10 years apart
 nestm3 = subset(nestm3, nestm3$interval > 9)
-#nestm3 = subset(nestm3, nestm3$minseason < 2005 & nestm3$maxseason > 2004)
 
 nestM3 <- nestm3
 
@@ -129,12 +119,10 @@ countspersite = nestM3 %>%
 summary(countspersite$counts)
 
 ```
-# Oosthuizen et al data distribution figures
+## Data distribution figures
 
 ```{r figures of data, warning=FALSE, message=FALSE}
 
-# This shows that there are some 1-count sites in the data being analysed 
-# (n = 146, not n = 133)
 samplesize = nestM3 %>% group_by(site_id, ncounts) %>% tally()
 length(unique(nestM3$site_id))
 
@@ -185,9 +173,6 @@ diff.plot = diff %>%
 
 # diff.plot
 
-library(colorspace)
-library(scales) 
-
 nestm3$countbreaks = cut(nestm3$ncounts, c(0, 2, 3, 5, 9, Inf))
 
 heat = ggplot(nestm3, aes(x = as.numeric(season_starting), 
@@ -211,20 +196,17 @@ heat = ggplot(nestm3, aes(x = as.numeric(season_starting),
 
 heat
 
-library(patchwork)
 combinedfig = (samplesize.plot | diff.plot) / samplesizeYear.plot + 
   plot_layout(nrow = 2, widths = c(1, 3)) +
   plot_annotation(tag_levels = 'A')
+
 combinedfig
 
 ```
 
-# Analysis for Oosthuizen et al. (current)
-
-## Fit a better GLMM 
+# Fit revised GLMM
 
 ```{r fit a better model, warning=TRUE, message=FALSE}
-
 # How is this model different to Kruger (2023)? 
 # 1) We used a different model specification for fixed and random effects
 # 2) We z-standardized the covariates before running the model
@@ -247,7 +229,7 @@ mc2 <- MCMCglmm(nests ~ Zseason_starting * ZLat,
                 rcov=~units,
               family="poisson", mev=NULL,
               data=nestM3,start=NULL, nodes="ALL", scale=TRUE, 
-              nitt=30000, thin=10, burnin=10000, pr=T,
+              nitt=50000, thin=10, burnin=20000, pr=T,
               pl=FALSE, verbose=F, DIC=TRUE, singular.ok=FALSE, saveX=TRUE,
               prior=prior, saveZ=TRUE, saveXL=TRUE, slice=FALSE, 
               ginverse=NULL, trunc=FALSE)
@@ -279,12 +261,11 @@ diag(autocorr(mc2$VCV)[2, , ])   # low autocorrelation
 
 ```
 
-## Predict using MCMCglmm mc2
+# Predict counts for every year
 
 ```{r predict mc2, warning=TRUE, message=FALSE}
 
-# construct an hypothetical dataframe to predict to
-
+# construct dataframe to predict to
 # need to predict to z-standardized variables 
 Z1 = dplyr::select(nestM3, season_starting, Lat)
 Z2 <- scale(Z1)
@@ -307,7 +288,7 @@ popy$nests<-c(0) ### MCMCglmm needs a column with the response variable
 popy$Zseason_starting = (popy$season_starting - ave_ss)/sd_ss
 popy$ZLat = (popy$Lat - ave_lat)/sd_lat
 
-head(popy)
+#head(popy)
 
 # Don't extrapolate more than X years
 first_last_season = nestM3 %>% 
@@ -315,14 +296,9 @@ first_last_season = nestM3 %>%
         dplyr::summarise(minyear = min(season_starting),
                          maxyear = max(season_starting)) %>%
         dplyr::arrange(minyear)
-first_last_season 
+#first_last_season 
 
 popy = merge(popy, first_last_season)
-
-# subset so that you only predict for sites with counts at least 20 years from begin and end
-
-#popy = subset(popy, popy$minyear < 1990)
-#popy = subset(popy, popy$maxyear > 2010)
 
 length(unique(popy$site_id))
 
@@ -334,20 +310,17 @@ popypred <- data.frame(predict(mc2,
                            interval="prediction",
                              posterior="all"))
 
-head(popypred)
+#head(popypred)
 
 popy$Zfit = popypred$fit
 popy$Zlwr = popypred$lwr
 popy$Zupr = popypred$upr
-
-## How accurate are the predictions relative to observed data?
-
 ```
 
 ## Conditional model predictions
 
 ```{r predict mc2 conditional, warning=TRUE, message=FALSE}
-#required_n_pages = round(101/16)+1
+# How accurate are the predictions relative to observed data?
 required_n_pages = round(70/16)+1
 for(i in 1:required_n_pages){
 
@@ -371,14 +344,8 @@ print(ggplot(data = popy) +
                         page = i,
                         scales = 'free'))}
  
-# Predictions are generally good, but back-predicting to 1960 is extrapolation 
-# (there are only 1 or 2 counts prior to 1970) so uncertainty (prediction intervals)
-# is high.
 
-
-# Look at some sites with temporally sparse data and strong extrapolation
-nestM3 %>% dplyr::filter(site_id == "MUCK")
-
+# some unreasonably high values:
 col_size = nestM3 %>%
           group_by(site_id) %>%
           slice(which.max(nests))
@@ -388,12 +355,10 @@ hist(col_size$nests, breaks = 30)
 ```
 
 
-
-
 ```{r RE, warning=FALSE, message=FALSE}
 # extract random effects from MCMCglmm
 # https://stackoverflow.com/questions/64562052/extract-random-effects-from-mcmcglmm
-library(broom.mixed)
+
 re = tidy(mc2, effects="ran_vals")
 unique(re$group)
 re = re %>% 
@@ -422,7 +387,7 @@ lat_plot = ggplot(data = re, aes(x = Lat, y = estZss))+
   geom_point()+
   geom_errorbar(aes(ymin=estZss-seZss,
                     ymax=estZss+seZss))+
-  theme_bw()+th+
+  theme_bw()+
   ylab("Slope")+
   scale_x_continuous(lim = c(-66,-61), breaks = seq(-66, -61, by = 1))+
   xlab("Latitude")+ 
@@ -444,7 +409,7 @@ ggplot(data = re, aes(x = Lat, y = estZss, label = site_id))+
   geom_text(hjust=0, vjust=0) + 
   geom_errorbar(aes(ymin=estZss-seZss,
                     ymax=estZss+seZss))+
-  theme_bw()+th+
+  theme_bw()+
   ylab("Slope")+xlim(-66,-60)+
   xlab("Latitude")+ 
   geom_hline(yintercept=0, 
@@ -452,43 +417,7 @@ ggplot(data = re, aes(x = Lat, y = estZss, label = site_id))+
 
 ```
 
-# Oosthuizen et al Population change:
-
-```{r population change, warning=TRUE, message=TRUE}
-
-# How many penguins were there, per year, across all sites?
-# We don't know, as we only have intermittent counts. 
-
-# calculate total population size predicted (how many penguins were there in all populations?)
-head(popy)
-
-pop_predict = popy %>%
-#           dplyr::filter(site_id != "HARM") %>%
-              dplyr::group_by(season_starting) %>% 
-              dplyr::summarise(total_pred = sum(Zfit),
-                       min_pred = sum(Zlwr),
-                       max_pred = sum(Zupr))
-
-pop_predict.p = ggplot(data = pop_predict) + 
- geom_line(aes(x = season_starting, y = total_pred), 
-           lty = 1, linewidth = 1.1)+
-  geom_line(aes(x = season_starting, y = min_pred), lty = 2, linewidth = 0.8)+
-  geom_line(aes(x = season_starting, y = max_pred), lty = 2, linewidth = 0.8)+
-  labs(x = "Year", y = "Total population count") +
-  theme_bw()+
-  scale_y_continuous(label = comma)
- # labs(subtitle = "Total predicted counts across all sites")+
- # guides(color=guide_legend(title="Data source"))+
- # theme(legend.position = c(0.7, 0.9))
-
-# pop_predict.p
-# 
-# delta.y = 100 * (pop_predict[40,2] - pop_predict[1,2]) / pop_predict[1,2]
-# delta.y
-
-```
-
-# Predicting population change with entire posterior distribution
+# Estimate 30-year population change from entire posterior distribution
 
 ```{r predictions of population change, include=TRUE, message=FALSE, warning=TRUE,fig.width=11,fig.height=7}
 
@@ -572,19 +501,7 @@ get_predictions <- function(posterior,
   predictions
 }
 
-#------ Set Plotting theme----------------
-gg_theme <- function () { 
-  theme_bw() %+replace% 
-    theme(
-      axis.text = element_text(colour = "black", size = 11),
-      axis.title = element_text(size=13),
-      axis.ticks = element_line(colour = "black"),
-    #  panel.grid = element_blank(),
-    #  strip.background = element_blank(),
-      panel.border = element_rect(colour = "black", fill = NA),
-      axis.line = element_line(colour = "black"),
-    legend.background = element_blank())
-}
+
 # Make predictions with and without random effects
 pred_re <- get_predictions(posterior, site_and_lat, first_year, last_year,
                            use_random_effects = TRUE)
@@ -593,8 +510,8 @@ pred_re <- get_predictions(posterior, site_and_lat, first_year, last_year,
 
 hist_growth = 
   ggplot(data = data.frame(pred_re$pop_change), aes(x = pred_re.pop_change,
-                                                     after_stat(ndensity)))+
-  geom_histogram(bins = 20, colour = "black", fill = "grey51")+
+                                                     after_stat(density)))+
+  geom_histogram(bins = 80, colour = "black", fill = "grey51")+
   theme_bw()+
   scale_x_continuous(n.breaks = 10)+
   labs(y= "Density (scaled to a maximum of 1)", 
@@ -613,35 +530,45 @@ length(unique(nestm3$site_id))
 # estimated population size in year1 (with random effects)
 pred_first = as.data.frame(pred_re$pop.first)
 names(pred_first) = "pred_first"
-#hist(pred_first$pred_first, breaks = 20)
 
 # estimated population size in year2 (with random effects)
 pred_last = as.data.frame(pred_re$pop.last)
 names(pred_last) = "pred_last"
-#hist(pred_last$pred_last, breaks = 20)
 
-#-----------------------------------------------------------------------------
-# pred_no_re <- get_predictions(posterior, site_and_lat, first_year, last_year,
-#                                use_random_effects = FALSE)
-# 
-# # Plot histogram of population change without random effects in prediction:
-# hist(pred_no_re$pop_change, breaks = 20)
-# 
-# # estimated population size in year1 (no random effects)
-# pred_first_noRE = as.data.frame(pred_no_re$pop.first)
-# names(pred_first_noRE) = "pred_first"
-# 
-# # estimated population size in year2 (no random effects)
-# pred_last_noRE = as.data.frame(pred_no_re$pop.last)
-# names(pred_last_noRE) = "pred_last"
-#------------------------------------------------------------------------------
+```
+
+## Plot overall population trend
+
+```{r population change, warning=TRUE, message=TRUE}
+# How many penguins were there, per year, across all sites?
+# We don't know, as we only have intermittent counts. 
+
+pop_predict = popy %>%
+#           dplyr::filter(site_id != "HARM") %>%
+              dplyr::group_by(season_starting) %>% 
+              dplyr::summarise(total_pred = sum(Zfit),
+                       min_pred = sum(Zlwr),
+                       max_pred = sum(Zupr))
+
+pop_predict.p = ggplot(data = pop_predict) + 
+ geom_line(aes(x = season_starting, y = total_pred), 
+           lty = 1, linewidth = 1.1)+
+  geom_line(aes(x = season_starting, y = min_pred), lty = 2, linewidth = 0.8)+
+  geom_line(aes(x = season_starting, y = max_pred), lty = 2, linewidth = 0.8)+
+  labs(x = "Year", y = "Total population count") +
+  theme_bw()+
+  scale_y_continuous(label = comma)
+ 
+#pop_predict.p 
+
 pop_predict.p = pop_predict.p + 
   geom_jitter(data = pred_first, aes(x = year1, y = pred_first),
              col = "black",size = 1, height = 0, width = 0.5, 
               alpha = 0.05, stroke = NA) +
   geom_jitter(data = pred_last, aes(x = year2, y = pred_last), 
              col = "black",size = 1, height = 0, width = 0.5, 
-              alpha = 0.05, stroke = NA) 
+              alpha = 0.05, stroke = NA) +
+   scale_y_continuous(lim = c(0, 1500000), labels = scales::comma) 
 
 pop_predict.p
 
