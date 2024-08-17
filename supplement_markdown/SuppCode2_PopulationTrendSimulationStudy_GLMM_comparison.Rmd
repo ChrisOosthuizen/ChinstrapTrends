@@ -294,7 +294,7 @@ ggplot() +
   theme_bw()+
   scale_y_continuous(label = comma)+
   labs(subtitle = "Total observed and predicted counts across 26 sites")+
-  guides(color=guide_legend(title="Data source"))+
+  guides(color=guide_legend(title=""))+
   theme(legend.position = c(0.7, 0.8))
 
 ```
@@ -350,7 +350,7 @@ ggplot() +
   labs(subtitle = 
         paste0("Total observed and predicted counts across 26 sites", 
               " (Kr",ds4psy::Umlaut["u"], "ger 2023 GLMM)"))+
-  guides(color=guide_legend(title="Data source"))+
+  guides(color=guide_legend(title=""))+
   theme(legend.position = c(0.7, 0.8))
   
 ```
@@ -492,19 +492,27 @@ pop_predict_mc2 = df %>%
 # Plot total N observed per year and the predicted total abundance per year
 pop_predict_mc2p = ggplot() + 
   geom_point(data = population, aes(x = year, y = totalN, 
-               color = "Observed (simulated) data"),  color = 'red', size = 2.3)+
+                                    color = "Simulated data"), size = 2.3) +
   geom_line(data = pop_predict_mc2, aes(x = year, y = total_pred, 
-               color = "Model predicted count"), color =  "darkblue", lty = 1, size = 1)+
-    geom_line(data = pop_predict_mc2, aes(x = year, y = min_pred, 
-               color = "Model predicted count"), color =  "steelblue", lty = 2, size = 0.8)+
-    geom_line(data = pop_predict_mc2, aes(x = year, y = max_pred, 
-               color = "Model predicted count"), color =  "steelblue", lty = 2, size = 0.8)+
+                                     color = "Model prediction"), lty = 1, size = 1) +
+  
+  geom_line(data = pop_predict_mc2, aes(x = year, y = min_pred, 
+                                        color = "Model prediction interval"), lty = 2, size = 0.8) +
+  geom_line(data = pop_predict_mc2, aes(x = year, y = max_pred, 
+                                        color = "Model prediction interval"), lty = 2, size = 0.8) +
   labs(x = "Year", y = "Total population count") +
-  theme_bw()+
-  scale_y_continuous(label = comma)+
-  labs(subtitle = "Total observed and predicted counts across 26 sites")+
-  guides(color=guide_legend(title="Data source"))+
+  theme_bw() +
+  scale_y_continuous(label = scales::comma) +
+  labs(subtitle = "Total observed and predicted counts across 26 sites") +
+  guides(color = guide_legend(title = "")) +
+  scale_color_manual(values = c("Simulated data" = "red", 
+                                "Model prediction" = "darkblue",
+                                "Model prediction interval" = "steelblue"),
+                     labels = c("Simulated data" = expression(Sigma~"simulated data"),
+                                "Model prediction" = expression(Sigma~"posterior mean predictions"),
+                                "Model prediction interval" = expression(Sigma~"95% prediction intervals"))) +
   theme(legend.position = c(0.7, 0.8))
+
 
 pop_predict_mc2p 
 
@@ -599,19 +607,26 @@ pop_predict_Kr = df %>%
 # Plot total N observed per year and the predicted total abundance per year
 pop_predict_Krp = ggplot() + 
   geom_point(data = population, aes(x = year, y = totalN, 
-              color = "Observed (simulated) data"), color = "red", size = 2.3)+
+                                    color = "Simulated data"), size = 2.3) +
   geom_line(data = pop_predict_Kr, aes(x = year, y = total_pred, 
-              color = "Model predicted count"), color =  "darkblue", lty = 1, size = 1)+
-      geom_line(data = pop_predict_Kr, aes(x = year, y = min_pred, 
-              color = "Model predicted count"), color =  "steelblue" , lty = 2, size = 0.8)+
-    geom_line(data = pop_predict_Kr, aes(x = year, y = max_pred, 
-              color = "Model predicted count"), color =  "steelblue", lty = 2, size = 0.8)+
+                                       color = "Model prediction"), lty = 1, size = 1) +
+  geom_line(data = pop_predict_Kr, aes(x = year, y = min_pred, 
+                                       color = "Model prediction interval (95%)"), lty = 2, size = 0.8) +
+  geom_line(data = pop_predict_Kr, aes(x = year, y = max_pred, 
+                                       color = "Model prediction interval (95%)"), lty = 2, size = 0.8) +
   labs(x = "Year", y = "Total population count") +
-  theme_bw()+
-  scale_y_continuous(label = comma)+
-  labs(subtitle = "Total observed and predicted counts across 26 sites")+
-  guides(color=guide_legend(title="Data source"))+
+  theme_bw() +
+  scale_y_continuous(label = scales::comma) +
+  labs(subtitle = "Total observed and predicted counts across 26 sites") +
+  guides(color = guide_legend(title = "")) +
+  scale_color_manual(values = c("Simulated data" = "red", 
+                                "Model prediction" = "darkblue", 
+                                "Model prediction interval (95%)" = "steelblue"),
+                     labels = c("Simulated data" = expression(Sigma~"simulated data"),
+                                "Model prediction" = expression(Sigma~"posterior mean predictions"),
+                                "Model prediction interval (95%)" = expression(Sigma~"95% prediction intervals"))) +
   theme(legend.position = c(0.7, 0.8))
+
 
 pop_predict_Krp 
 
@@ -653,19 +668,26 @@ pop_predict_Kr_re = df %>%
 # Plot total N observed per year and the predicted total abundance per year
 pop_predict_Krp_re = ggplot() + 
   geom_point(data = population, aes(x = year, y = totalN, 
-              color = "Observed (simulated) data"), color = "red", size = 2.3)+
+                                    color = "Simulated data"), size = 2.3) +
   geom_line(data = pop_predict_Kr_re, aes(x = year, y = total_pred_re, 
-              color = "Model predicted count"), color = "darkblue", lty = 1, size = 1)+
-      geom_line(data = pop_predict_Kr_re, aes(x = year, y = min_pred_re, 
-              color = "Model predicted count"), color = "steelblue", lty = 2, size = 0.8)+
-    geom_line(data = pop_predict_Kr_re, aes(x = year, y = max_pred_re, 
-              color = "Model predicted count"), color = "steelblue", lty = 2, size = 0.8)+
+                                          color = "Model prediction"), lty = 1, size = 1) +
+  geom_line(data = pop_predict_Kr_re, aes(x = year, y = min_pred_re, 
+                                          color = "Model prediction interval (95%)"), lty = 2, size = 0.8) +
+  geom_line(data = pop_predict_Kr_re, aes(x = year, y = max_pred_re, 
+                                          color = "Model prediction interval (95%)"), lty = 2, size = 0.8) +
   labs(x = "Year", y = "Total population count") +
-  theme_bw()+
-  scale_y_continuous(label = comma)+
-  labs(subtitle = "Total observed and predicted counts across 26 sites")+
-  guides(color=guide_legend(title="Data source"))+
+  theme_bw() +
+  scale_y_continuous(label = scales::comma) +
+  labs(subtitle = "Total observed and predicted counts across 26 sites") +
+  guides(color = guide_legend(title = "")) +
+  scale_color_manual(values = c("Simulated data" = "red", 
+                                "Model prediction" = "darkblue", 
+                                "Model prediction interval (95%)" = "steelblue"),
+                    labels = c("Simulated data" = expression(Sigma~"simulated data"),
+                                "Model prediction" = expression(Sigma~"posterior mean predictions"),
+                                "Model prediction interval (95%)" = expression(Sigma~"95% prediction intervals"))) +
   theme(legend.position = c(0.7, 0.8))
+
 
 pop_predict_Krp_re
 
@@ -904,29 +926,37 @@ ggplot(data = data.frame(pred_re$pop.last), aes(x = pred_re.pop.last,
 fit.mc2p = 
 fit.mc2p + 
   gg_theme()+
-  labs(title = "", subtitle = paste0("MCMCglmm: predict with RE (this study)"))+
+  labs(title = "", subtitle = paste0("Current (revised) analysis"))+
   theme(legend.position="none") + 
-    theme(plot.margin = margin(1,1,1,1))
+    theme(plot.margin = margin(1,1,1,1))+ 
+   theme(panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) 
    
      
 fit.mc_Kr_marginp = 
 fit.mc_Kr_marginp + 
   gg_theme()+
   labs(title = "", subtitle = paste0("Kr",
-       ds4psy::Umlaut["u"], "ger (2023) MCMCglmm prediction"))+
+       ds4psy::Umlaut["u"], "ger (2023)"))+
   theme(legend.position="none") + 
-    theme(plot.margin = margin(1,6,1,1))
+    theme(plot.margin = margin(1,6,1,1))+ 
+   theme(panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()) 
    
   
 # cowplot::plot_grid(fit.mc2p, fit.mc_Kr_marginp, labels = c('A', 'B'), 
 #                    ncol = 2, label_size = 12)
 
-pop_predict_mc2p = 
-pop_predict_mc2p  +
+pop_predict_mc2p2 = pop_predict_mc2p  +
   gg_theme()+
-  labs(subtitle = "MCMCglmm: predict with RE (this study)")+
-  theme(legend.position = c(0.7, 0.9))+ 
-    theme(plot.margin = margin(1,1 ,1,1))
+  labs(subtitle = "Current (revised) analysis")+
+  theme(legend.position = c(0.6, 0.9))+ 
+    theme(plot.margin = margin(1,1 ,1,1)) +
+    theme(legend.key = element_blank())+ 
+   theme(panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
+   
+
    
  # geom_point(data = pred_first_noRE, aes(x = year1, y = pred_first), col = "red") +
  # geom_point(data = pred_last_noRE, aes(x = year2, y = pred_last), col = "red")+
@@ -938,16 +968,18 @@ pop_predict_mc2p  +
 #               alpha = 0.1, stroke = NA)   
 
   
-pop_predict_Krp = 
-pop_predict_Krp  + 
+pop_predict_Krp2 = pop_predict_Krp  + 
   gg_theme()+
-  labs(subtitle = paste0("Kr",ds4psy::Umlaut["u"], "ger (2023) MCMCglmm prediction "))+
-  theme(legend.position = c(0.7, 0.9)) + 
+  labs(subtitle = paste0("Kr",ds4psy::Umlaut["u"], "ger (2023)"))+
+  theme(legend.position = c(0.6, 0.9)) + 
   scale_y_continuous(label = comma, limits = c(0, 5000000), 
                      breaks = seq(0, 5000000, by = 1000000)) + 
-   theme(plot.margin = margin(1,6,1,1))
+   theme(plot.margin = margin(1,6,1,1)) +
+   theme(legend.key = element_blank())+ 
+   theme(panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
    
-
+pop_predict_Krp2
 
 # cowplot::plot_grid(pop_predict_mc2p, pop_predict_Krp, labels = c('A', 'B'), 
 #                    ncol = 2, label_size = 12)
@@ -957,35 +989,42 @@ pop_predict_Krp  +
 fit.mc_Kr_randomeff.p = fit.mc_Kr_randomeff.p + 
                       gg_theme()+
                       labs(title = "", 
-            subtitle = paste0("Kr",ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: predict with RE"))+
+            subtitle = paste0("Kr",ds4psy::Umlaut["u"], "ger (2023): predict with RE"))+
       theme(legend.position="none") + 
-    theme(plot.margin = margin(1,6,1,1))
+    theme(plot.margin = margin(1,6,1,1))+ 
+   theme(panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
    
-pop_predict_Krp_re = pop_predict_Krp_re +
+pop_predict_Krp_re2 = pop_predict_Krp_re +
                 gg_theme()+
                 labs(title = "", 
-                subtitle = paste0("Kr",ds4psy::Umlaut["u"], "ger (2023) MCMCglmm: predict with RE")) + 
-            theme(legend.position = c(0.7, 0.9)) + 
-      theme(plot.margin = margin(1,6,1,1))
+                subtitle = paste0("Kr",ds4psy::Umlaut["u"], "ger (2023): predict with RE")) + 
+            theme(legend.position = c(0.6, 0.9)) + 
+      theme(plot.margin = margin(1,6,1,1)) + 
+    theme(legend.key = element_blank()) + 
+   theme(panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank())
+
+pop_predict_Krp_re2
    
   
 library(patchwork)
 
 (fit.mc_Kr_marginp | fit.mc_Kr_randomeff.p | fit.mc2p) / 
-(pop_predict_Krp | pop_predict_Krp_re | pop_predict_mc2p) + 
+(pop_predict_Krp2 | pop_predict_Krp_re2 | pop_predict_mc2p2) + 
   plot_annotation(tag_levels = 'A') & 
   theme(plot.tag.position = c(0.1, 0.9),  # Adjust position (x, y)
         plot.tag = element_text(size = 12, hjust = 0, vjust = 0))
 
-# Save Plot 
-# pdf("./figure/Figure2.pdf",
-#      useDingbats = FALSE, width = 13, height = 9)
-# (fit.mc_Kr_marginp | fit.mc_Kr_randomeff.p | fit.mc2p) /
-# (pop_predict_Krp | pop_predict_Krp_re | pop_predict_mc2p) +
-#   plot_annotation(tag_levels = 'A') &
-#   theme(plot.tag.position = c(0.1, 0.9),  # Adjust position (x, y)
-#         plot.tag = element_text(size = 12, hjust = 0, vjust = 0))
-# dev.off()
+# # Save Plot 
+#  pdf("./figure/Figure2.pdf",
+#       useDingbats = FALSE, width = 11, height = 7)
+#  (fit.mc_Kr_marginp | fit.mc_Kr_randomeff.p | fit.mc2p) /
+#  (pop_predict_Krp2 | pop_predict_Krp_re2 | pop_predict_mc2p2) +
+#    plot_annotation(tag_levels = 'A') &
+#    theme(plot.tag.position = c(0.1, 0.9),  # Adjust position (x, y)
+#          plot.tag = element_text(size = 12, hjust = 0, vjust = 0))
+#  dev.off()
 # 
 # # Save as PNG
 # ggsave("./figure/Figure2.png",

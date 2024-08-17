@@ -31,8 +31,8 @@ This script provides a reanalysis of chinstrap penguin population trends, in the
 
 
 ```{r run in r , include=FALSE}
-library(knitr)
-knit('./supplement_markdown/SuppCode6_MAPPPDreanalysis_inputdatasubset_57sites.Rmd')
+#library(knitr)
+#knit('./supplement_markdown/SuppCode6_MAPPPDreanalysis_inputdatasubset_57sites.Rmd')
 ```
 
 # Load packages and set plotting theme
@@ -397,12 +397,14 @@ lat_plot = ggplot(data = re, aes(x = Lat, y = estZss))+
   scale_x_continuous(lim = c(-66,-61), breaks = seq(-66, -61, by = 1))+
   xlab("Latitude")+ 
   geom_hline(yintercept=0, 
-             color = "black", lty = 2) 
+             color = "black", lty = 2) + 
+   theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) 
 
 lat_plot
 
 ## Save Plot 
-pdf("./figure/MS_Latitude.pdf",
+pdf("./figure/MS_Latitude2.pdf",
       useDingbats = FALSE, width = 5, height = 4)
 plot(lat_plot)
 dev.off()
@@ -520,7 +522,9 @@ hist_growth =
   theme_bw()+
   scale_x_continuous(n.breaks = 10)+
   labs(y= "Density (scaled to a maximum of 1)", 
-       x = "Change in population size (1990 - 2019) (%)") 
+       x = "Change in population size (1990 - 2019) (%)") + 
+   theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) 
 
 hist_growth
 
@@ -573,12 +577,14 @@ pop_predict.p = pop_predict.p +
   geom_jitter(data = pred_last, aes(x = year2, y = pred_last), 
              col = "black",size = 1, height = 0, width = 0.5, 
               alpha = 0.05, stroke = NA) +
-   scale_y_continuous(lim = c(0, 300000), labels = scales::comma) 
+   scale_y_continuous(lim = c(0, 300000), labels = scales::comma) + 
+   theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) 
 
 pop_predict.p
 
 ## Save Plot 
-pdf("./figure/MS_Population_change.pdf",
+pdf("./figure/MS_Population_change2.pdf",
       useDingbats = FALSE, width = 10, height = 4)
 cowplot::plot_grid(pop_predict.p, hist_growth, labels = c('A', 'B'), ncol = 2, label_size = 12)
 dev.off()
